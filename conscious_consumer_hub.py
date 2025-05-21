@@ -6,35 +6,31 @@ import seaborn as sns
 import os
 import openai
 
-# GPT-4 functions using Chat API (new OpenAI >=1.0.0 interface)
+# Initialize OpenAI client
+client = openai.OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
-@st.cache_data(show_spinner=False)
+# GPT-4 functions using new openai>=1.0.0 interface
 def gpt4_sentiment_analysis(text):
-    response = openai.ChatCompletion.create(
-        model="gpt-4",  # Or "gpt-3.5-turbo" if gpt-4 is not available to your key
-        messages=[
-            {"role": "system", "content": "You are a helpful assistant that performs sentiment analysis."},
-            {"role": "user", "content": f"Analyze the sentiment of this review: \"{text}\". Provide a detailed sentiment analysis. If the sentiment is negative, suggest improvements."}
-        ],
-        max_tokens=450
-    )
-    return response.choices[0].message['content'].strip()
-
-def gpt4_review_insight(text):
-    response = openai.ChatCompletion.create(
+    response = client.chat.completions.create(
         model="gpt-4",
         messages=[
-            {"role": "system", "content": "You are a helpful assistant that provides business improvement suggestions based on product reviews."},
-            {"role": "user", "content": f"Based on the sentiment and this review, suggest how the product can be improved: \"{text}\""}
+            {"role": "system", "content": "You are a helpful assistant that performs sentiment analysis."},
+            {"role": "user", "content": f"Analyze the sentiment of this review: \"{text}\". Provide a detailed sentiment analysis. If the sentiment seems negative, provide recommendations on how the product can be improved."}
         ],
         max_tokens=450
     )
-    return response.choices[0].message['content'].strip()
+    return response.choices[0].message.content.strip()
 
-# Securely fetch OpenAI key from environment variable
-openai.api_key = os.getenv('OPENAI_API_KEY')
-if not openai.api_key:
-    st.error("OpenAI API key not found. Please set the OPENAI_API_KEY environment variable.")
+def gpt4_review_insight(text):
+    response = client.chat.completions.create(
+        model="gpt-4",
+        messages=[
+            {"role": "system", "content": "You are a helpful assistant who gives product improvement advice based on user reviews."},
+            {"role": "user", "content": f"Based on the sentiment and the review, provide recommendations on how the product can be improved: \"{text}\""}
+        ],
+        max_tokens=450
+    )
+    return response.choices[0].message.content.strip()
 
 def preprocess_text(text):
     return text.lower()
@@ -63,6 +59,7 @@ def visualize_sentiment(sentiment_scores):
     sns.barplot(x=['Positive', 'Negative'], y=[sentiment_scores.count('Positive'), sentiment_scores.count('Negative')], ax=ax)
     st.pyplot(fig)
 
+# Session state defaults
 if 'page_number' not in st.session_state:
     st.session_state.page_number = 0
 if 'nav_selection' not in st.session_state:
@@ -82,9 +79,10 @@ for page, icon in nav_icons.items():
     if st.sidebar.button(f"{icon} {page}"):
         st.session_state.nav_selection = page
 
+# Pages
 if st.session_state.nav_selection == "Home":
     st.subheader("Welcome to the Conscious Consumer Hub MVP!")
-    st.image("https://media.giphy.com/media/l378c04F2fjeZ7vH2/giphy.gif", use_container_width=True)
+    st.image("https://media.giphy.com/media/l378c04F2fjeZ7vH2/giphy.gif", use_column_width=True)
     st.subheader("Interesting Facts")
     st.write("- Did you know that over 70% of consumers say they would pay a premium for products that are ethically produced?")
     st.write("- According to a survey, 81% of millennials expect their favorite brands to make public declarations of corporate responsibility.")
@@ -110,10 +108,12 @@ elif st.session_state.nav_selection == "Sentiment Analysis":
 elif st.session_state.nav_selection == "Search Amazon Reviews":
     st.subheader("Search Amazon Reviews")
     query = st.text_input("Enter a keyword to search for reviews:")
+    
     if query:
         search_results, total_results = search_and_analyze(query, st.session_state.page_number, results_per_page=10)
         total_pages = total_results // 10 + (total_results % 10 > 0)
         sentiment_scores = []
+
         for index, (text, sentiment) in enumerate(search_results):
             st.write(f"Review: {text}")
             if sentiment == 'Positive':
@@ -128,8 +128,10 @@ elif st.session_state.nav_selection == "Search Amazon Reviews":
                 except Exception as e:
                     st.error(f"Failed to get GPT-4 insights: {str(e)}")
             st.markdown("---")
+
         if sentiment_scores:
             visualize_sentiment(sentiment_scores)
+
         col1, col2 = st.columns(2)
         with col1:
             if st.button('Previous'):
